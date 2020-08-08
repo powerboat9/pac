@@ -1,77 +1,83 @@
-#define SIG_ERR			-1
-#define SIG_DONE		-2
+#include <stdlib.h>
+#include <stdio.h>
 
-#define KEYWORD_AUTO		0
-#define KEYWORD_BREAK		1
-#define KEYWORD_CASE		2
-#define KEYWORD_CHAR		3
-#define KEYWORD_CONST		4
-#define KEYWORD_CONTINUE	5
-#define KEYWORD_DEFAULT		6
-#define KEYWORD_DO		7
-#define KEYWORD_DOUBLE		8
-#define KEYWORD_ELSE		9
-#define KEYWORD_ENUM		10
-#define KEYWORD_EXTERN		11
-#define KEYWORD_FLOAT		12
-#define KEYWORD_FOR		13
-#define KEYWORD_GOTO		14
-#define KEYWORD_IF		15
-#define KEYWORD_INT		16
-#define KEYWORD_LONG		17
-#define KEYWORD_REGISTER	18
-#define KEYWORD_RETURN		19
-#define KEYWORD_SHORT		20
-#define KEYWORD_SIGNED		21
-#define KEYWORD_SIZEOF		22
-#define KEYWORD_STATIC		23
-#define KEYWORD_STRUCT		24
-#define KEYWORD_SWITCH		25
-#define KEYWORD_TYPEDEF		26
-#define KEYWORD_UNION		27
-#define KEYWORD_UNSIGNED	28
-#define KEYWORD_VOID		29
-#define KEYWORD_VOLATILE	30
-#define KEYWORD_WHILE		31
+#include "simple.h"
 
-#define TOKEN_ADD
-#define TOKEN_SUB
-#define TOKEN_MUL
-#define TOKEN_DIV
-#define TOKEN_-
-
-struct parse_state {
+void init_char_state(struct simple_state *state) {
+    state->holding_back = 0;
+    state->cnt = 0;
+    state->line_num = 1;
+    state->next_line = -1;
 }
 
-// Handles control lines, line count, tokenisation, etc.
-
-#define CTRL_LINESTART
-#define CTRL_PARSING_IDENT
-#define CTRL_PARSING_NDEC
-#define CTRL_PARSING_NZERO
-#define CTRL_PARSING_NOCT
-#define CTRL_PARSING_NHEX
-#define CTRL_PARSING_HAD_PLUS
-#define CTRL_PARSING_HAD_MINUS
-#define CTRL_PARSING_HAD_STAR
-#define CTRL_PARSING_HAD_
-
-struct ctrl_state {
-    struct parse_state next;
-    long line;
-    long next_line;
-    int state;
-    union {
-    } state_data;
-}
-
-void start_ctrl(struct ctrl_state *state) {
-}
-
-void feed_ctrl(struct ctrl_state *state, char c) {
-}
-
-void end_ctrl(struct ctrl_state *state) {
+int trig_feed_char(struct simple_state *state, char c) {
+    switch (state->trig_state) {
+        case 0:
+            if (c == '?') {
+                state->trig_state = 1;
+                return PARSE_WAIT;
+            } else {
+                return (int) c;
+            }
+            return;
+        case 1:
+            if (c == '?') {
+                state->cnt = 2;
+            } else {
+                feed_splice(&state->next, '?');
+                feed_splice(&state->next, c);
+                state->cnt = 0;
+            }
+            return;
+        case 2:
+            switch (c) {
+                case '=':
+                    feed_splice(&state->next, '#');
+                    state->cnt = 0;
+                    return;
+                case '/':
+                    feed_splice(&state->next, '\\');
+                    state->cnt = 0;
+                    return;
+                case '\'':
+                    feed_splice(&state->next, '^');
+                    state->cnt = 0;
+                    return;
+                case '(':
+                    feed_splice(&state->next, '[');
+                    state->cnt = 0;
+                    return;
+                case ')':
+                    feed_splice(&state->next, ']');
+                    state->cnt = 0;
+                    return;
+                case '!':
+                    feed_splice(&state->next, '|');
+                    state->cnt = 0;
+                    return;
+                case '<':
+                    feed_splice(&state->next, '{');
+                    state->cnt = 0;
+                    return;
+                case '>':
+                    feed_splice(&state->next, '}');
+                    state->cnt = 0;
+                    return;
+                case '-':
+                    feed_splice(&state->next, '~');
+                    state->cnt = 0;
+                    return;
+                case '?':
+                    feed_splice(&state->next, '?');
+                    return;
+                default:
+                    feed_splice(&state->next, '?');
+                    feed_splice(&state->next, '?');
+                    feed_splice(&state->next, c);
+                    state->cnt = 0;
+                    return;
+            }
+    }
 }
 
 // Handles line splicing
@@ -206,13 +212,7 @@ void end_trig(struct trig_state *state) {
     end_splice(&state->next);
 }
 
-// Handle input
-
-void parse_input(char *buf, size_t len) {
-    struct trig_state state;
-    start_trig(&state);
-    for (size_t i = 0; i < len; i++) {
-        feed_trig(&state, buf[i]);
-    }
-    end_trig(&state);
-}
+// 0 on success and no affect on errno, -1 on error and sets errno
+int run_subs(char *buf, size_t len) {
+    size_t i = 0;
+    2
