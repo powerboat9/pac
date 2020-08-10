@@ -64,17 +64,27 @@ char *finish_string_builder() {
     return ret;
 }
 
+int read_num_flags() {
+    char c = input();
+    if (c == "U" || c == "u") {
+        c = input();
+        if (c == "L" || c == "l") {
+            return I_FORCE_UNSIGNED | I_FORCE_LONG;
+        } else {
+            unput(c);
+            return I_FORCE_UNSIGNED;
+        }
+    } else {
+        unput(c);
+        return 0;
+    }
+}
+
 %}
 
-%pointer
+WSPACE		[ \n\t\r]
 
-%union {
-    unsigned long i_ul;
-    long i_l;
-    unsigned int i_u;
-    int i;
-    char *s;
-}
+%pointer
 
 %x comment
 %x string
@@ -84,6 +94,12 @@ char *finish_string_builder() {
 "/*"		BEGIN(comment)
 <comment>"*/"	BEGIN(INITIAL)
 <comment>.	/* ignore */
+<comment><<EOF>>	{
+    error("unterminated comment");
+    yyterminate();
+}
+
+"//"[^\n]*	/* ignore */
 
 <string,charlit>\\n	{push_cs_lit('\n');}
 <string,charlit>\\t	{push_cs_lit('\t');}
@@ -103,7 +119,12 @@ char *finish_string_builder() {
 \"		BEGIN(string)
 <string>\"	{
     yyval.s = finish_string_builder();
-    return SLIT;
+    BEGIN(INITIAL)
+    return TOKEN_STR;
+}
+<string><<EOF>>	{
+    error("unterminated string");
+    yyterminate();
 }
 
 \'		{
@@ -111,40 +132,72 @@ char *finish_string_builder() {
     BEGIN(charlit)
 }
 <charlit>\'	{
-    yyval.i = int_acc;
+    is_char_lit = 0;
+    yyval.num = int_acc;
     BEGIN(INITIAL)
+    return TOKEN_CHAR;
+}
+<charlit><<EOF>>	{
+    error("unterminated character literal");
+    yyterminate();
 }
 
-"auto"		{return TOKEN_AUTO;}
-"double"	{return TOKEN_DOUBLE;}
-"int"		{return TOKEN_INT;}
-"struct"	{return TOKEN_STRUCT;}
-"break"		{return TOKEN_BREAK;}
-"else"		{return TOKEN_ELSE;}
-"long"		{return TOKEN_LONG;}
-"switch"	{return TOKEN_SWITCH;}
-"case"		{return TOKEN_CASE;}
-"enum"		{return TOKEN_ENUM;}
-"register"	{return TOKEN_REGISTER;}
-"typedef"	{return TOKEN_TYPEDEF;}
-"char"		{return TOKEN_CHAR;}
-"extern"	{return TOKEN_EXTERN;}
-"return"	{return TOKEN_RETURN;}
-"union"		{return TOKEN_UNION;}
-"const"		{return TOKEN_CONST;}
-"float"		{return TOKEN_FLOAT;}
-"short"		{return TOKEN_SHORT;}
-"unsigned"	{return TOKEN_UNSIGNED;}
-"continue"	{return TOKEN_CONTINUE;}
-"for"		{return TOKEN_FOR;}
-"signed"	{return TOKEN_SIGNED;}
-"void"		{return TOKEN_VOID;}
-"default"	{return TOKEN_DEFAULT;}
-"goto"		{return TOKEN_GOTO;}
-"sizeof"	{return TOKEN_SIZEOF;}
-"volatile"	{return TOKEN_VOLATILE;}
-"do"		{return TOKEN_DO;}
-"if"		{return TOKEN_IF;}
-"static"	{return TOKEN_STATIC;}
-"while"		{return TOKEN_WHILE;}
+"auto"		{return KEY_AUTO;}
+"double"	{return KEY_DOUBLE;}
+"int"		{return KEY_INT;}
+"struct"	{return KEY_STRUCT;}
+"break"		{return KEY_BREAK;}
+"else"		{return KEY_ELSE;}
+"long"		{return KEY_LONG;}
+"switch"	{return KEY_SWITCH;}
+"case"		{return KEY_CASE;}
+"enum"		{return KEY_ENUM;}
+"register"	{return KEY_REGISTER;}
+"typedef"	{return KEY_TYPEDEF;}
+"char"		{return KEY_CHAR;}
+"extern"	{return KEY_EXTERN;}
+"return"	{return KEY_RETURN;}
+"union"		{return KEY_UNION;}
+"const"		{return KEY_CONST;}
+"float"		{return KEY_FLOAT;}
+"short"		{return KEY_SHORT;}
+"unsigned"	{return KEY_UNSIGNED;}
+"continue"	{return KEY_CONTINUE;}
+"for"		{return KEY_FOR;}
+"signed"	{return KEY_SIGNED;}
+"void"		{return KEY_VOID;}
+"default"	{return KEY_DEFAULT;}
+"goto"		{return KEY_GOTO;}
+"sizeof"	{return KEY_SIZEOF;}
+"volatile"	{return KEY_VOLATILE;}
+"do"		{return KEY_DO;}
+"if"		{return KEY_IF;}
+"static"	{return KEY_STATIC;}
+"while"		{return KEY_WHILE;}
+
+[A-Za-z_][A-Za-z0-9_]	{
+    yyval.s = strdup(yytext);
+    return TOKEN_IDENT;
+}
+
+0[xX][0-9a-fA-F]+[uU]?[lL]?	{
+    char *end;
+    yyval.num.v = strtoul(yytext, &end, 16);
+    yyval.num.flags = read_num_flags();
+    return TOKEN_NUM;
+}
+
+0[0-7]*		{
+    yyval.num.v = strtoul(yytext, NULL, 8);
+    yyval.num.flags = read_num_flags();
+    return TOKEN_NUM;
+}
+
+[1-9][0-9]*	{
+    yyval.num.v = strtoul(yytext, NULL, 10);
+    yyval.num.flags = read_num_flags();
+    return TOKEN_NUM;
+}
+
+[1-9][0-9]*\.
 %%
