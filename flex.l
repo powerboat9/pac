@@ -64,19 +64,23 @@ char *finish_string_builder() {
     return ret;
 }
 
-int read_num_flags() {
-    char c = input();
-    if (c == "U" || c == "u") {
-        c = input();
-        if (c == "L" || c == "l") {
-            return I_FORCE_UNSIGNED | I_FORCE_LONG;
-        } else {
-            unput(c);
-            return I_FORCE_UNSIGNED;
-        }
-    } else {
-        unput(c);
+int read_n_lit(int base) {
+    char *end;
+    yyval.num.v = strtoul(yytext, end, base);
+    yyval.num.flags = 0;
+    char *tmp_end = end;
+    if (*tmp_end == 'u' || *tmp_end == 'U') {
+        tmp_end++;
+        yyval.num.flags |= I_FORCE_UNSIGNED;
+    }
+    if (*tmp_end == 'l' || *tmp_end == 'L') {
+        tmp_end++;
+        yyval.num.flags |= I_FORCE_LONG;
+    }
+    if (*tmp_end == '\0') {
         return 0;
+    } else {
+        return -1;
     }
 }
 
@@ -114,17 +118,25 @@ WSPACE		[ \n\t\r]
 <string,charlit>\\\"	{push_cs_lit('"');}
 <string,charlit>\\[0-7]{1,3}		{push_cs_lit((char) strtol(yytext + 1, NULL, 8));}
 <string,charlit>\\x[0-9A-Fa-f]+		{push_cs_lit((char) strtol(yytext + 2, NULL, 16));}
+<string,charlit>\\	{
+    error("invalid escape sequence");
+}
+<string,charlit>\n	{
+    error("unterminated string/char");
+}
+<string,charlit><<EOF>>	{
+    error("unterminated string/char");
+}
 <string,charlit>.	{push_cs_lit(*yytext);}
 
-\"		BEGIN(string)
+\"		{
+    is_char_lit = 0;
+    BEGIN(string)
+}
 <string>\"	{
     yyval.s = finish_string_builder();
     BEGIN(INITIAL)
     return TOKEN_STR;
-}
-<string><<EOF>>	{
-    error("unterminated string");
-    yyterminate();
 }
 
 \'		{
@@ -132,14 +144,9 @@ WSPACE		[ \n\t\r]
     BEGIN(charlit)
 }
 <charlit>\'	{
-    is_char_lit = 0;
     yyval.num = int_acc;
     BEGIN(INITIAL)
     return TOKEN_CHAR;
-}
-<charlit><<EOF>>	{
-    error("unterminated character literal");
-    yyterminate();
 }
 
 "auto"		{return KEY_AUTO;}
@@ -180,24 +187,55 @@ WSPACE		[ \n\t\r]
     return TOKEN_IDENT;
 }
 
-0[xX][0-9a-fA-F]+[uU]?[lL]?	{
+0[xX][0-9a-fA-F]+[A-Za-z_]*	{
+    if (read_n_lit(16) == 0) {
+        return TOKEN_NUM;
+    } else {
+        error("invalid number suffix");
+    }
+}
+
+0[0-7]*[A-Za-z_]*		{
+    if (read_n_lit(8) == 0) {
+        return TOKEN_NUM;
+    } else {
+        error("invalid number suffix");
+    }
+}
+
+[1-9][0-9]*[A-Za-z_]*	{
+    if (read_n_lit(10) == 0) {
+        return TOKEN_NUM;
+    } else {
+        error("invalid number suffix");
+    }
+}
+
+[0-9]+\.[0-9]*(e[-+]?[0-9]+)?[A-Za-z_]*		|
+\.?[0-9]+(e[-+]?[0-9]+)?[A-Za-z_]*		{
     char *end;
-    yyval.num.v = strtoul(yytext, &end, 16);
-    yyval.num.flags = read_num_flags();
-    return TOKEN_NUM;
+    yyval.fnum.v = strtoul(yytext, end, base);
+    yyval.fnum.flags = 0;
+    if (*end == '\0') {
+        yyval.fnum.flags = F_DOUBLE;
+        return TOKEN_FNUM;
+    } else {
+        if (end[1] != '\0') {
+            error("invalid number suffix");
+        } else {
+            switch (*end) {
+                case 'f':
+                case 'F':
+                    yyval.fnum.flags = F_FLOAT;
+                    return TOKEN_FNUM;
+                case 'l':
+                case 'L':
+                    yyval.fnum.flags = F_LDOUBLE;
+                    return TOKEN_FNUM;
+                default:
+                    error("invalid number suffix");
+            }
+        }
+    }
 }
-
-0[0-7]*		{
-    yyval.num.v = strtoul(yytext, NULL, 8);
-    yyval.num.flags = read_num_flags();
-    return TOKEN_NUM;
-}
-
-[1-9][0-9]*	{
-    yyval.num.v = strtoul(yytext, NULL, 10);
-    yyval.num.flags = read_num_flags();
-    return TOKEN_NUM;
-}
-
-[1-9][0-9]*\.
 %%

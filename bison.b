@@ -56,6 +56,7 @@ struct float_int {
 %token	TOKEN_STR
 %token	TOKEN_CHAR
 %token	TOKEN_NUM
+%token	TOKEN_FNUM
 
 %union {
     struct int_lit num;
